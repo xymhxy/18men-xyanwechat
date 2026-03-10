@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>19门派闯关 v1.7</title>
+
+    <!-- Vant CSS -->
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/vant/2.12.54/index.min.css" />
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css" />
+
+    <!-- Vue.js -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/vue/2.7.0/vue.min.js"></script>
+    <!-- Vant -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/vant/2.12.54/vant.min.js"></script>
+</head>
+
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-top">
+                <h1>⚔️ 19门派闯关 v1.8</h1>
+                <button class="theme-toggle-btn" @click="toggleTheme" :title="isDarkTheme ? '切换亮色模式' : '切换暗色模式'">
+                    {{ isDarkTheme ? '☀️' : '🌙' }}
+                </button>
+            </div>
+            <div class="subtitle">19门便捷工具</div>
+        </header>
+
+        <!-- ========== 时间提示模块 ========== -->
+        <section class="glass-card">
+            <div class="section-title">
+                <span class="icon purple">⏰</span>
+                <h2>时间提示</h2>
+            </div>
+
+            <!-- 昼夜提示 -->
+            <div class="timer-row">
+                <button class="btn btn-primary" @click="startDayNightNotify()">
+                    🌓 昼夜提示
+                </button>
+                <div class="timer-display" v-text="nowTime || '--:--:--'"></div>
+                <div v-if="DayandNight">
+                    <span class="day-night-tag" :class="DayandNight === 'DAY' ? 'day' : 'night'">
+                        {{ DayandNight === 'DAY' ? '☀️ 白天' : '🌙 黑夜' }}
+                    </span>
+                </div>
+            </div>
+
+            <!-- 摄妖香 -->
+            <div class="timer-row">
+                <button class="btn btn-primary" @click="startIncense()">
+                    🔥 摄妖香
+                </button>
+                <van-count-down class="timer-display" ref="countdownIncense"
+                    :time="IncenseCountDownTime" :auto-start="false" format="mm:ss"
+                    @finish="alertIncense()">
+                </van-count-down>
+                <span style="font-size:0.8rem; color:var(--text-muted);">25分钟</span>
+            </div>
+
+            <!-- 回梦丹 -->
+            <div class="timer-row">
+                <button class="btn btn-primary" :disabled="PelletDisabled" @click="startPellet()">
+                    💊 回梦丹
+                </button>
+                <van-count-down class="timer-display" ref="countdownPellet"
+                    :time="PelletCountDownTime" :auto-start="false" format="mm:ss"
+                    @finish="alertPellet()">
+                </van-count-down>
+                <span style="font-size:0.8rem; color:var(--text-muted);">60分钟</span>
+            </div>
+        </section>
+
+        <!-- ========== 月光CD辅助模块 ========== -->
+        <section class="glass-card">
+            <div class="section-title">
+                <span class="icon amber">🌙</span>
+                <h2>月光冷却提示</h2>
+                <div style="margin-left:auto; display:flex; gap:8px;">
+                    <button class="btn-text" :disabled="isEditMoonlight" @click="handleEditMoonlight">
+                        ✏️ 编辑门派
+                    </button>
+                    <button class="btn-text" :disabled="!isEditMoonlight" @click="handleFinishEditMoonlight">
+                        ✅ 完成编辑
+                    </button>
+                </div>
+            </div>
+
+            <div class="moonlight-grid">
+                <div class="moonlight-item" v-for="(item, index) in MoonlightList" :key="index">
+                    <!-- 名称/编辑 -->
+                    <div v-if="!isEditMoonlight">
+                        <button class="btn btn-primary" :disabled="item.isDisabled" @click="start(index)">
+                            {{ item.label }}
+                        </button>
+                    </div>
+                    <div v-else>
+                        <input class="moonlight-edit-input" v-model="MoonlightList[index].label" />
+                    </div>
+
+                    <!-- 倒计时 -->
+                    <van-count-down :ref="'countdown' + index"
+                        :time="countDownTime" :auto-start="false" format="mm:ss"
+                        @finish="reset(index)">
+                    </van-count-down>
+
+                    <!-- 操作按钮 -->
+                    <div class="moonlight-actions">
+                        <button class="btn btn-warning btn-sm" :disabled="!item.isDisabled" @click="reset(index)">
+                            重置
+                        </button>
+                        <button class="btn btn-ghost btn-sm" :disabled="!item.isDisabled" @click="discountMoonlightTime(index)">
+                            -30秒
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== 18门已过关卡模块 ========== -->
+        <section class="glass-card">
+            <div class="section-title">
+                <span class="icon emerald">🏰</span>
+                <h2>{{ totalSects }}门已过关卡</h2>
+                <span class="desc">坐标为场景极限切怪坐标，大火区可能需要走的更近</span>
+            </div>
+
+            <!-- 状态栏 -->
+            <div class="status-bar">
+                <button class="btn btn-danger btn-sm" @click="handleClearSect">🗑️ 清空关卡</button>
+                <div class="status-item">
+                    <span>当前第</span>
+                    <span class="number">{{ totalSects * rounds + checkedSect.length }}</span>
+                    <span>关</span>
+                </div>
+                <div class="status-item">
+                    <span>下一关：</span>
+                    <span class="tag" :class="nextSectNOMClass">{{ nextSectNOMText }}</span>
+                    <span class="tag" :class="nextSectInvisible ? 'tag-red' : 'tag-green'">
+                        {{ nextSectInvisible ? '有隐身' : '无隐身' }}
+                    </span>
+                </div>
+                <div class="status-item">
+                    <span>本轮结束：</span>
+                    <span class="number">{{ totalSects * (rounds + 1) }}</span>
+                </div>
+            </div>
+
+            <!-- 门派勾选 -->
+            <div class="sect-grid">
+                <div class="sect-checkbox" v-for="(sect, index) in sectList" :key="index">
+                    <input type="checkbox" :id="'sect-' + index" :value="sect"
+                        v-model="checkedSect" @change="handleChangeSect">
+                    <label :for="'sect-' + index">
+                        {{ sect.slice(0, 2) }}<br>{{ sect.substring(2) }}
+                    </label>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== 传送人坐标模块 ========== -->
+        <section class="glass-card">
+            <div class="section-title">
+                <span class="icon sky">🧭</span>
+                <h2>传送人极限传送坐标</h2>
+                <span class="desc">点不到原地ALT+1做任意动作刷新坐标</span>
+            </div>
+
+            <div class="transporter-grid">
+                <div class="transporter-card" v-for="(item, index) in transporterData" :key="index">
+                    <div class="route">{{ item.route }}</div>
+                    <div class="coord">{{ item.coord }}</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== 道具栏模块 ========== -->
+        <section class="glass-card">
+            <div class="section-title">
+                <span class="icon rose">🎒</span>
+                <h2>19门道具栏</h2>
+            </div>
+
+            <table class="items-table">
+                <thead>
+                    <tr>
+                        <th>格1</th>
+                        <th>格2</th>
+                        <th>格3</th>
+                        <th>格4</th>
+                        <th>格5</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="(row, rIdx) in itemsData" :key="rIdx">
+                        <td v-for="(cell, cIdx) in row" :key="cIdx" v-html="cell"></td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- ========== 准备工作模块 ========== -->
+        <section class="glass-card">
+            <div class="section-title">
+                <span class="icon teal">📋</span>
+                <h2>19门准备工作</h2>
+                <span class="desc">共{{ prepareList.length }}项</span>
+            </div>
+
+            <div class="prepare-grid">
+                <div class="prepare-item" v-for="(item, index) in prepareList" :key="index">
+                    <input type="checkbox" :id="'prepare-' + index">
+                    <label :for="'prepare-' + index">{{ item }}</label>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========== 特别鸣谢 & Release Notes ========== -->
+        <section class="glass-card">
+            <div class="section-title">
+                <span class="icon purple">🌟</span>
+                <h2>特别鸣谢</h2>
+            </div>
+            <div class="credits">
+                <p>灵感：<span class="highlight">大雨哥</span> & <span class="highlight">昭君台 充了钱伤害高</span></p>
+                <p>攻略：<span class="highlight">CC主播【初茗】朱砂</span></p>
+                <p>开发：<span class="highlight">B站 星尘°</span> & <span class="highlight">昭君台 满目星尘.</span></p>
+				                <p>20260310重构+更新弥勒山：<span class="highlight">XY</span>  <span class="highlight"></span></p>
+            </div>
+        </section>
+
+        <section class="glass-card">
+            <div class="section-title">
+                <span class="icon amber">📝</span>
+                <h2>更新日志</h2>
+            </div>
+            <ul class="release-list">
+			                <li><span class="date">2026-03-10</span> <span class="version">v1.8</span> xyanwechat更新19门弥勒山，并对页面进行重构</li>
+                <li><span class="date">2023-08-02</span> <span class="version">v1.7</span> 可编辑月光名称</li>
+                <li><span class="date">2023-05-10</span> <span class="version">v1.6 Plus</span> 新增极限切怪坐标更新</li>
+                <li><span class="date">2022-11-29</span> <span class="version">v1.5</span> 新增昼夜提示 - 导演哥</li>
+                <li><span class="date">2022-11-06</span> <span class="version">v1.4</span> 修复清空关卡bug，新增怪物数量和隐身怪物提示</li>
+                <li><span class="date">2022-11-04</span> <span class="version">v1.3</span> 更新月光时间，忘记点开始可减少时间</li>
+                <li><span class="date">2022-10-09</span> <span class="version">v1.2</span> 实时关数显示，月光CD置灰，摄妖香/回梦丹提醒</li>
+            </ul>
+        </section>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>当前版本由xyanwechat更新重构</p>
+        </footer>
+
+        <!-- Toast Container -->
+        <div id="toast-container"></div>
+    </div>
+
+    <script src="main.js"></script>
+</body>
+
+</html>
